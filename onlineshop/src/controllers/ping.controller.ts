@@ -40,7 +40,7 @@ export class PingController {
   ping(): object {
     // Reply with a greeting, the current time, the url, and request headers
     return {
-      greeting: 'Main branch',
+      greeting: '[Main branch] Hello from loopback',
     };
   }
 }
