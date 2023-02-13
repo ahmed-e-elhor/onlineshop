@@ -1,29 +1,12 @@
-import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
-} from '@loopback/repository';
-import {
-  post,
-  param,
-  get,
-  getModelSchemaRef,
-  patch,
-  put,
-  del,
-  requestBody,
-  response,
-} from '@loopback/rest';
-import {Product} from '../models';
+import {Count, CountSchema, Filter, FilterExcludingWhere, repository, Where} from '@loopback/repository';
+import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response} from '@loopback/rest';
+import {Product, User} from '../models';
 import {ProductRepository} from '../repositories';
 
 export class ProductController {
   constructor(
     @repository(ProductRepository)
-    public productRepository : ProductRepository,
+    public productRepository: ProductRepository,
   ) {}
 
   @post('/products')
@@ -52,9 +35,7 @@ export class ProductController {
     description: 'Product model count',
     content: {'application/json': {schema: CountSchema}},
   })
-  async count(
-    @param.where(Product) where?: Where<Product>,
-  ): Promise<Count> {
+  async count(@param.where(Product) where?: Where<Product>): Promise<Count> {
     return this.productRepository.count(where);
   }
 
@@ -70,9 +51,7 @@ export class ProductController {
       },
     },
   })
-  async find(
-    @param.filter(Product) filter?: Filter<Product>,
-  ): Promise<Product[]> {
+  async find(@param.filter(Product) filter?: Filter<Product>): Promise<Product[]> {
     return this.productRepository.find(filter);
   }
 
@@ -106,10 +85,13 @@ export class ProductController {
   })
   async findById(
     @param.path.number('id') id: number,
-    @param.filter(Product, {exclude: 'where'}) filter?: FilterExcludingWhere<Product>
+    @param.filter(Product, {exclude: 'where'})
+    filter?: FilterExcludingWhere<Product>,
   ): Promise<Product> {
     return this.productRepository.findById(id, filter);
   }
+
+  // try to limit accecss
 
   @patch('/products/{id}')
   @response(204, {
@@ -133,10 +115,7 @@ export class ProductController {
   @response(204, {
     description: 'Product PUT success',
   })
-  async replaceById(
-    @param.path.number('id') id: number,
-    @requestBody() product: Product,
-  ): Promise<void> {
+  async replaceById(@param.path.number('id') id: number, @requestBody() product: Product): Promise<void> {
     await this.productRepository.replaceById(id, product);
   }
 
@@ -146,5 +125,22 @@ export class ProductController {
   })
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.productRepository.deleteById(id);
+  }
+
+  // Get user who owns this product
+  @get('/products/{id}/user', {
+    responses: {
+      '200': {
+        description: 'User belonging to Product',
+        content: {
+          'application/json': {
+            schema: {type: 'array', items: getModelSchemaRef(User)},
+          },
+        },
+      },
+    },
+  })
+  async getUser(@param.path.number('id') id: typeof Product.prototype.id): Promise<User> {
+    return this.productRepository.user(id);
   }
 }

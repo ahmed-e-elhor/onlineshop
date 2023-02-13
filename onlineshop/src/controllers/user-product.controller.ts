@@ -1,30 +1,10 @@
-import {
-  Count,
-  CountSchema,
-  Filter,
-  repository,
-  Where,
-} from '@loopback/repository';
-import {
-  del,
-  get,
-  getModelSchemaRef,
-  getWhereSchemaFor,
-  param,
-  patch,
-  post,
-  requestBody,
-} from '@loopback/rest';
-import {
-  User,
-  Product,
-} from '../models';
+import {Count, CountSchema, Filter, repository, Where} from '@loopback/repository';
+import {del, get, getModelSchemaRef, getWhereSchemaFor, param, patch, post, requestBody} from '@loopback/rest';
+import {User, Product} from '../models';
 import {UserRepository} from '../repositories';
 
 export class UserProductController {
-  constructor(
-    @repository(UserRepository) protected userRepository: UserRepository,
-  ) { }
+  constructor(@repository(UserRepository) protected userRepository: UserRepository) {}
 
   @get('/users/{id}/products', {
     responses: {
@@ -38,10 +18,7 @@ export class UserProductController {
       },
     },
   })
-  async find(
-    @param.path.number('id') id: number,
-    @param.query.object('filter') filter?: Filter<Product>,
-  ): Promise<Product[]> {
+  async find(@param.path.number('id') id: number, @param.query.object('filter') filter?: Filter<Product>): Promise<Product[]> {
     return this.userRepository.products(id).find(filter);
   }
 
@@ -61,15 +38,18 @@ export class UserProductController {
           schema: getModelSchemaRef(Product, {
             title: 'NewProductInUser',
             exclude: ['id'],
-            optional: ['userId']
+            optional: ['userId'],
           }),
         },
       },
-    }) product: Omit<Product, 'id'>,
+    })
+    product: Omit<Product, 'id'>,
   ): Promise<Product> {
     return this.userRepository.products(id).create(product);
   }
 
+
+  // update all the products for a specific user
   @patch('/users/{id}/products', {
     responses: {
       '200': {
@@ -101,10 +81,7 @@ export class UserProductController {
       },
     },
   })
-  async delete(
-    @param.path.number('id') id: number,
-    @param.query.object('where', getWhereSchemaFor(Product)) where?: Where<Product>,
-  ): Promise<Count> {
+  async delete(@param.path.number('id') id: number, @param.query.object('where', getWhereSchemaFor(Product)) where?: Where<Product>): Promise<Count> {
     return this.userRepository.products(id).delete(where);
   }
 }

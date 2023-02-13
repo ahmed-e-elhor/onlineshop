@@ -1,29 +1,12 @@
-import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
-} from '@loopback/repository';
-import {
-  post,
-  param,
-  get,
-  getModelSchemaRef,
-  patch,
-  put,
-  del,
-  requestBody,
-  response,
-} from '@loopback/rest';
-import {Order} from '../models';
+import {Count, CountSchema, Filter, FilterExcludingWhere, repository, Where} from '@loopback/repository';
+import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response} from '@loopback/rest';
+import {Order, User} from '../models';
 import {OrderRepository} from '../repositories';
 
 export class OrderController {
   constructor(
     @repository(OrderRepository)
-    public orderRepository : OrderRepository,
+    public orderRepository: OrderRepository,
   ) {}
 
   @post('/orders')
@@ -52,9 +35,7 @@ export class OrderController {
     description: 'Order model count',
     content: {'application/json': {schema: CountSchema}},
   })
-  async count(
-    @param.where(Order) where?: Where<Order>,
-  ): Promise<Count> {
+  async count(@param.where(Order) where?: Where<Order>): Promise<Count> {
     return this.orderRepository.count(where);
   }
 
@@ -70,9 +51,7 @@ export class OrderController {
       },
     },
   })
-  async find(
-    @param.filter(Order) filter?: Filter<Order>,
-  ): Promise<Order[]> {
+  async find(@param.filter(Order) filter?: Filter<Order>): Promise<Order[]> {
     return this.orderRepository.find(filter);
   }
 
@@ -104,10 +83,7 @@ export class OrderController {
       },
     },
   })
-  async findById(
-    @param.path.number('id') id: number,
-    @param.filter(Order, {exclude: 'where'}) filter?: FilterExcludingWhere<Order>
-  ): Promise<Order> {
+  async findById(@param.path.number('id') id: number, @param.filter(Order, {exclude: 'where'}) filter?: FilterExcludingWhere<Order>): Promise<Order> {
     return this.orderRepository.findById(id, filter);
   }
 
@@ -133,10 +109,7 @@ export class OrderController {
   @response(204, {
     description: 'Order PUT success',
   })
-  async replaceById(
-    @param.path.number('id') id: number,
-    @requestBody() order: Order,
-  ): Promise<void> {
+  async replaceById(@param.path.number('id') id: number, @requestBody() order: Order): Promise<void> {
     await this.orderRepository.replaceById(id, order);
   }
 
@@ -146,5 +119,25 @@ export class OrderController {
   })
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.orderRepository.deleteById(id);
+  }
+
+
+  // get user by orderId 
+  @get('/orders/{id}/user', {
+    responses: {
+      '200': {
+        description: 'User belonging to Order',
+        content: {
+          'application/json': {
+            schema: {type: 'array', items: getModelSchemaRef(User)},
+          },
+        },
+      },
+    },
+  })
+  async getUser(
+    @param.path.number('id') id: typeof Order.prototype.id,
+  ): Promise<User> {
+    return this.orderRepository.user(id);
   }
 }

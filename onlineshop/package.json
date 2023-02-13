@@ -33,6 +33,7 @@
     "openapi-spec": "node ./dist/openapi-spec",
     "prestart": "npm run rebuild",
     "start": "node -r source-map-support/register .",
+    "dev" : "nodemon . --ext js,ts ",
     "clean": "lb-clean dist *.tsbuildinfo .eslintcache",
     "rebuild": "npm run clean && npm run build"
   },
@@ -64,6 +65,7 @@
     "@loopback/testlab": "^5.0.8",
     "@types/node": "^14.18.36",
     "eslint": "^8.33.0",
+    "nodemon": "^2.0.20",
     "source-map-support": "^0.5.21",
     "typescript": "~4.9.4"
   }
