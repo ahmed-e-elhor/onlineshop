@@ -9,6 +9,8 @@ import {RestApplication} from '@loopback/rest';
 import {ServiceMixin} from '@loopback/service-proxy';
 import path from 'path';
 import {MySequence} from './sequence';
+import multer from 'multer';
+import {FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY} from './bindings/keys/fileUploadKeys';
 
 export {ApplicationConfig};
 
@@ -40,5 +42,30 @@ export class OnlineshopApplication extends BootMixin(
         nested: true,
       },
     };
+
+
+
+    this.configureFileUpload(options.fileStorageDirectory);
+
+  }
+
+  /**
+  * Configure `multer` options for file upload
+  */
+  protected configureFileUpload(destination?: string) {
+    // Upload files to `dist/.sandbox` by default
+    destination = destination ?? path.join(__dirname, '../.sandbox');
+    this.bind(STORAGE_DIRECTORY).to(destination);
+    const multerOptions: multer.Options = {
+      storage: multer.diskStorage({
+        destination,
+        // Use the original file name as is
+        filename: (req, file, cb) => {
+          cb(null, file.originalname);
+        },
+      }),
+    };
+    // Configure the file upload service with multer options
+    this.configure(FILE_UPLOAD_SERVICE).to(multerOptions);
   }
 }

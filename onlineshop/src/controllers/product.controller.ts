@@ -1,13 +1,58 @@
-import {Count, CountSchema, Filter, FilterExcludingWhere, repository, Where} from '@loopback/repository';
-import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response} from '@loopback/rest';
+import {Count, CountSchema, Filter, FilterExcludingWhere, IsolationLevel, repository, Where} from '@loopback/repository';
+import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response, RestBindings, Request, Response, HttpErrors} from '@loopback/rest';
+import multer from 'multer';
 import {Product, User} from '../models';
 import {ProductRepository} from '../repositories';
+import {inject} from '@loopback/core';
+import { uploudFiles } from '../bindings/interfaces/Files.interface';
+import { FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY } from '../bindings/keys/fileUploadKeys';
+import { FileUploadHandler } from '../bindings/types/fileUploadTypes';
+import path from 'path';
+
+import fs from 'fs'
+import Ajv from 'ajv';
+import ajvErrors from 'ajv-errors';
+import addFormats from 'ajv-formats';
+import { productSchema } from '../validators/product/schema';
+
+
 
 export class ProductController {
   constructor(
     @repository(ProductRepository)
     public productRepository: ProductRepository,
+    @inject(FILE_UPLOAD_SERVICE) private handler: FileUploadHandler, // 50%
+    @inject(STORAGE_DIRECTORY) private storageDirectory: string,
   ) {}
+
+  private static getFilesAndFields(request: Request) {
+    const uploadedFiles = request.files;
+    const mapper = (f: globalThis.Express.Multer.File) => ({
+      fieldname: f.fieldname,
+      originalname: f.originalname,
+      encoding: f.encoding,
+      mimetype: f.mimetype,
+      size: f.size,
+    });
+    let files: object[] = [];
+    if (Array.isArray(uploadedFiles)) {
+      files = uploadedFiles.map(mapper);
+    } else {
+      for (const filename in uploadedFiles) {
+        files.push(...uploadedFiles[filename].map(mapper));
+      }
+    }
+    return {files, fields: request.body};
+  }
+  private validate(fields: any) {
+    const ajv = new Ajv({allErrors: true});
+    addFormats(ajv);
+    ajvErrors(ajv);
+    const validate = ajv.compile(productSchema);
+
+    const res =  validate(fields)
+    return res
+  }
 
   @post('/products')
   @response(200, {
@@ -15,21 +60,70 @@ export class ProductController {
     content: {'application/json': {schema: getModelSchemaRef(Product)}},
   })
   async create(
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Product, {
-            title: 'NewProduct',
-            exclude: ['id'],
-          }),
+    // @inject(AuthenticationBindings.CURRENT_USER) currentUserProfile: any, //??
+    @inject(RestBindings.Http.RESPONSE) response: Response, //??
+    @requestBody.file()
+    request: Request,
+  ) {
+    // Begin a new transaction.
+    // do i need to create it to the db ?
+    const transaction =
+      await this.productRepository.dataSource.beginTransaction({
+        isolationLevel: IsolationLevel.READ_COMMITTED,
+        timeout: 3000,
+      });
+
+    try {
+      const uploudedFiles = await new Promise<uploudFiles>(
+        (resolve, reject) => {
+          this.handler(request, response, (err: unknown) => {
+            if (err) reject(err);
+            else {
+              resolve(ProductController.getFilesAndFields(request));
+            }
+          });
         },
-      },
-    })
-    product: Omit<Product, 'id'>,
-  ): Promise<Product> {
-    return this.productRepository.create(product);
+      );
+
+      const fields: {title: string; price: string} = Object(
+        uploudedFiles.fields,
+      );
+
+      const fileData = Object(uploudedFiles.files[0]);
+      const image_url = path.resolve(
+        this.storageDirectory,
+        fileData.originalname,
+      );
+
+      if (!this.validate(fields)) {
+        // unlink the file
+        fs.unlink(image_url, err => {
+          if (err) console.log(err);
+          else {
+            console.log('file deleted');
+          }
+        });
+        throw new HttpErrors.UnprocessableEntity('This is errors in data');
+      }
+
+      const createdProduct = await this.productRepository.create({
+        title: fields.title,
+        price: parseInt(fields.price),
+        image: image_url,
+        // user_id: parseInt(currentUserProfile[securityId]),
+      });
+
+      await transaction.commit();
+      return createdProduct;
+      
+    } catch (err) {
+      await transaction.rollback();
+    }
   }
 
+
+
+ 
   @get('/products/count')
   @response(200, {
     description: 'Product model count',
@@ -144,3 +238,5 @@ export class ProductController {
     return this.productRepository.user(id);
   }
 }
+
+
