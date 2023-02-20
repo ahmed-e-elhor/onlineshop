@@ -11,6 +11,11 @@ import path from 'path';
 import {MySequence} from './sequence';
 import multer from 'multer';
 import {FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY} from './bindings/keys/fileUploadKeys';
+import {AuthenticationBindings} from '@loopback/authentication';
+import {MyAuthActionProvider, MyAuthAuthenticationStrategyProvider, MyAuthBindings, MyAuthMetadataProvider} from './bindings/authentications/jwt.auth';
+import { BcryptHasher, PasswordHasherBindings } from './services/hash.password.bcryptjs';
+import * as dotenv from 'dotenv';
+
 
 export {ApplicationConfig};
 
@@ -19,6 +24,7 @@ export class OnlineshopApplication extends BootMixin(
 ) {
   constructor(options: ApplicationConfig = {}) {
     super(options);
+    dotenv.config();
 
     // Set up the custom sequence
     this.sequence(MySequence);
@@ -43,7 +49,13 @@ export class OnlineshopApplication extends BootMixin(
       },
     };
 
+    this.bind(AuthenticationBindings.METADATA).toProvider(MyAuthMetadataProvider);
+    this.bind(MyAuthBindings.STRATEGY).toProvider(MyAuthAuthenticationStrategyProvider);
+    this.bind(AuthenticationBindings.AUTH_ACTION).toProvider(MyAuthActionProvider);
 
+    // Bind bcrypt hash services
+    this.bind(PasswordHasherBindings.ROUNDS).to(10);
+    this.bind(PasswordHasherBindings.PASSWORD_HASHER).toClass(BcryptHasher);
 
     this.configureFileUpload(options.fileStorageDirectory);
 

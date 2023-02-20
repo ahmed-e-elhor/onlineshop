@@ -1,6 +1,7 @@
-import {Entity, hasMany, model, property} from '@loopback/repository';
-import { Order, OrderWithRelations } from './order.model';
-import { Product, ProductWithRelations } from './product.model';
+import {belongsTo, Entity, hasMany, model, property} from '@loopback/repository';
+import {Order, OrderWithRelations} from './order.model';
+import {Product, ProductWithRelations} from './product.model';
+import { Role } from './role.model';
 
 @model()
 export class User extends Entity {
@@ -28,7 +29,9 @@ export class User extends Entity {
 
   @hasMany(() => Order)
   orders: Order[];
-  //
+
+  @belongsTo(() => Role, {name: 'roles'})
+  roleId: number;
 
   constructor(data?: Partial<User>) {
     super(data);
@@ -40,7 +43,6 @@ export interface UserRelations {
   orders?: OrderWithRelations[];
 
   product?: ProductWithRelations[];
-  
 }
 
 export type UserWithRelations = User & UserRelations;
