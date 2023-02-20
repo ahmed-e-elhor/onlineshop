@@ -2,26 +2,31 @@ import {Count, CountSchema, Filter, FilterExcludingWhere, IsolationLevel, reposi
 import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response, RestBindings, Request, Response, HttpErrors} from '@loopback/rest';
 import multer from 'multer';
 import {Product, User} from '../models';
-import {ProductRepository} from '../repositories';
+import {ProductRepository, UserRepository} from '../repositories';
 import {inject} from '@loopback/core';
-import { uploudFiles } from '../bindings/interfaces/Files.interface';
-import { FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY } from '../bindings/keys/fileUploadKeys';
-import { FileUploadHandler } from '../bindings/types/fileUploadTypes';
+import {uploudFiles} from '../bindings/interfaces/Files.interface';
+import {FILE_UPLOAD_SERVICE, STORAGE_DIRECTORY} from '../bindings/keys/fileUploadKeys';
+import {FileUploadHandler} from '../bindings/types/fileUploadTypes';
 import path from 'path';
 
-import fs from 'fs'
+import fs from 'fs';
 import Ajv from 'ajv';
 import ajvErrors from 'ajv-errors';
 import addFormats from 'ajv-formats';
-import { productSchema } from '../validators/product/schema';
-
-
+import {productSchema} from '../validators/product/schema';
+import {AuthenticationBindings} from '@loopback/authentication';
+import {securityId, UserProfile} from '@loopback/security';
+import { secured, SecuredType } from '../bindings/authentications/jwt.auth';
+import { roles } from '../bindings/interfaces/Types.interface';
 
 export class ProductController {
   constructor(
     @repository(ProductRepository)
     public productRepository: ProductRepository,
-    @inject(FILE_UPLOAD_SERVICE) private handler: FileUploadHandler, // 50%
+    @repository(ProductRepository)
+    public userRepository: UserRepository, 
+
+    @inject(FILE_UPLOAD_SERVICE) private handler: FileUploadHandler,
     @inject(STORAGE_DIRECTORY) private storageDirectory: string,
   ) {}
 
@@ -50,50 +55,43 @@ export class ProductController {
     ajvErrors(ajv);
     const validate = ajv.compile(productSchema);
 
-    const res =  validate(fields)
-    return res
+    const res = validate(fields);
+    return res;
   }
 
+  @secured(SecuredType.HAS_ANY_ROLE, [roles.user])
   @post('/products')
   @response(200, {
     description: 'Product model instance',
     content: {'application/json': {schema: getModelSchemaRef(Product)}},
   })
   async create(
-    // @inject(AuthenticationBindings.CURRENT_USER) currentUserProfile: any, //??
-    @inject(RestBindings.Http.RESPONSE) response: Response, //??
+    @inject(AuthenticationBindings.CURRENT_USER) currentUserProfile: any, //??
+    @inject(RestBindings.Http.RESPONSE) response: Response, 
     @requestBody.file()
     request: Request,
   ) {
     // Begin a new transaction.
     // do i need to create it to the db ?
-    const transaction =
-      await this.productRepository.dataSource.beginTransaction({
-        isolationLevel: IsolationLevel.READ_COMMITTED,
-        timeout: 3000,
-      });
+    const transaction = await this.productRepository.dataSource.beginTransaction({
+      isolationLevel: IsolationLevel.READ_COMMITTED,
+      timeout: 3000,
+    });
 
     try {
-      const uploudedFiles = await new Promise<uploudFiles>(
-        (resolve, reject) => {
-          this.handler(request, response, (err: unknown) => {
-            if (err) reject(err);
-            else {
-              resolve(ProductController.getFilesAndFields(request));
-            }
-          });
-        },
-      );
+      const uploudedFiles = await new Promise<uploudFiles>((resolve, reject) => {
+        this.handler(request, response, (err: unknown) => {
+          if (err) reject(err);
+          else {
+            resolve(ProductController.getFilesAndFields(request));
+          }
+        });
+      });
 
-      const fields: {title: string; price: string} = Object(
-        uploudedFiles.fields,
-      );
+      const fields: {title: string; price: string} = Object(uploudedFiles.fields);
 
       const fileData = Object(uploudedFiles.files[0]);
-      const image_url = path.resolve(
-        this.storageDirectory,
-        fileData.originalname,
-      );
+      const image_url = path.resolve(this.storageDirectory, fileData.originalname);
 
       if (!this.validate(fields)) {
         // unlink the file
@@ -110,20 +108,16 @@ export class ProductController {
         title: fields.title,
         price: parseInt(fields.price),
         image: image_url,
-        // user_id: parseInt(currentUserProfile[securityId]),
+        userId: parseInt(currentUserProfile[securityId]),
       });
 
       await transaction.commit();
       return createdProduct;
-      
     } catch (err) {
       await transaction.rollback();
     }
   }
 
-
-
- 
   @get('/products/count')
   @response(200, {
     description: 'Product model count',
@@ -238,5 +232,3 @@ export class ProductController {
     return this.productRepository.user(id);
   }
 }
-
-

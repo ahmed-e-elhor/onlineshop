@@ -1,20 +1,33 @@
 import {Count, CountSchema, Filter, FilterExcludingWhere, repository, Where} from '@loopback/repository';
-import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response} from '@loopback/rest';
+import {post, param, get, getModelSchemaRef, patch, put, del, requestBody, response, HttpErrors} from '@loopback/rest';
 import {User} from '../models';
-import {UserRepository} from '../repositories';
+import {RoleRepository, UserRepository} from '../repositories';
+import {inject} from '@loopback/core';
+import {PasswordHasher, PasswordHasherBindings} from '../services/hash.password.bcryptjs';
+import {Credentials, JWT_SECRET, secured, SecuredType} from '../bindings/authentications/jwt.auth';
+import {promisify} from 'util';
+import {sign} from 'jsonwebtoken';
+import {roles, rolesId} from '../bindings/interfaces/Types.interface';
+import {AuthenticationBindings} from '@loopback/authentication';
+const signAsync = promisify(sign);
+
+import {securityId, UserProfile, SecurityBindings} from '@loopback/security';
 
 export class UserController {
   constructor(
-    @repository(UserRepository)
-    public userRepository: UserRepository,
+    @inject(SecurityBindings.USER, {optional: true}) public user: UserProfile,
+    
+    @repository(UserRepository) public userRepository: UserRepository,
+    @repository(RoleRepository) public roleRepository: RoleRepository,
+    @inject(PasswordHasherBindings.PASSWORD_HASHER) public passwordHasher: PasswordHasher,
   ) {}
 
-  @post('/users')
+  @post('/users/signup')
   @response(200, {
     description: 'User model instance',
     content: {'application/json': {schema: getModelSchemaRef(User)}},
   })
-  async create(
+  async signup(
     @requestBody({
       content: {
         'application/json': {
@@ -27,7 +40,77 @@ export class UserController {
     })
     user: Omit<User, 'id'>,
   ): Promise<User> {
+    // - check if user exist
+    const userExist = await this.userRepository.findOne({
+      where: {email: user.email},
+    });
+    if (userExist) throw new HttpErrors.Conflict('Email already exist');
+
+    const hashPassword = await this.passwordHasher.hashPassword(user.password);
+    user['password'] = hashPassword;
+    user['roleId'] = rolesId.userRole;
+
     return this.userRepository.create(user);
+  }
+
+  @post('/users/login')
+  @response(200, {
+    description: 'User Info ',
+    content: {'application/json': {schema: getModelSchemaRef(User)}},
+  })
+  async login(@requestBody() credentials: Credentials) {
+    if (!credentials.email || !credentials.password) throw new HttpErrors.BadRequest('Missing Email or Password');
+
+    const user = await this.userRepository.findOne({where: {email: credentials.email}});
+    if (!user) throw new HttpErrors.Unauthorized('Invalid email or password');
+
+    const correctPassword = await this.passwordHasher.comparePassword(credentials.password, user.password);
+    if (!correctPassword) throw new HttpErrors.Unauthorized('Invalid password');
+
+    // create a token
+    const tolenPayload = {email: credentials.email};
+    const token = await signAsync(tolenPayload, JWT_SECRET);
+
+    const {id, email, roleId} = user;
+    let roles: any;
+    roles = roleId ? await this.roleRepository.findById(roleId) : [];
+    if (roles.permissions) roles.permissions = JSON.parse(roles.permissions);
+
+    return {
+      token,
+      id: id as number,
+      email,
+      roles,
+    };
+  }
+
+  // User profile
+  @secured(SecuredType.HAS_ANY_ROLE, [roles.user])
+  @get('/users/profile', {
+    responses: {
+      '200': {
+        description: 'The current user profile',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'array',
+              items: getModelSchemaRef(User, {includeRelations: true}),
+            },
+          },
+        },
+      },
+    },
+  })
+  async getProfile(
+    @inject(AuthenticationBindings.CURRENT_USER)
+    currentUserProfile: UserProfile,
+  ): Promise<UserProfile> {
+    //lets get user id from token and set it as it
+    currentUserProfile.id = currentUserProfile[securityId];
+    //and delete security id
+    delete currentUserProfile?.securityId;
+    //return user data
+    return currentUserProfile;
   }
 
   @get('/users/count')
